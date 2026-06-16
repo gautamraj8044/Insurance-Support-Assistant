@@ -1,5 +1,18 @@
 services:
 
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: insurance_phoenix
+    ports:
+      - "6006:6006"   # Phoenix UI + OTLP HTTP collector
+      - "4317:4317"   # OTLP gRPC collector (optional)
+    volumes:
+      - phoenix_data:/mnt/data
+    restart: unless-stopped
+    # No healthcheck here: the official Phoenix image is distroless (no
+    # shell, no curl/wget), so a CMD/CMD-SHELL healthcheck can't run inside
+    # it. depends_on below uses service_started instead of service_healthy.
+
   setup:
     build:
       context: .
@@ -30,13 +43,22 @@ services:
     environment:
       - DB_PATH=/app/data/insurance_support.db
       - CHROMA_PATH=/app/chroma_db
+      # Overrides .env's PHOENIX_COLLECTOR_ENDPOINT (which is meant for
+      # running the app outside Docker) - inside the compose network,
+      # Phoenix is reachable by its service name, not localhost.
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006/v1/traces
     volumes:
       - app_data:/app/data
       - chroma_data:/app/chroma_db
       - app_logs:/app/logs
+    depends_on:
+      phoenix:
+        condition: service_started
+        required: false
     restart: unless-stopped
 
 volumes:
   app_data:
   chroma_data:
   app_logs:
+  phoenix_data:

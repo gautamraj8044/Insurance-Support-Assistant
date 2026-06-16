@@ -18,11 +18,11 @@ _CONFIGURED = False
 
 
 class _RequestContextFilter(logging.Filter):
-    """Attaches the active trace id (from ContextVar) to every log record."""
+    """Attaches a request/trace id to every log record, if present."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        from core.tracing import get_trace_id
-        record.trace_id = get_trace_id()
+        if not hasattr(record, "trace_id"):
+            record.trace_id = "-"
         return True
 
 

@@ -22,11 +22,13 @@ from core.conversation import ConversationSession, run_turn
 from core.logging_setup import configure_logging, get_logger
 from core.settings import app as app_settings
 from core.settings import groq, validate_settings
+from core.tracing import maybe_init_phoenix
 from graph.builder import build_app
 from tools.faq_tool import is_faq_store_ready
 
 configure_logging()
 logger = get_logger(__name__)
+maybe_init_phoenix()
 
 
 st.set_page_config(
@@ -64,11 +66,10 @@ def _render_sidebar(config_problems: list[str], faq_ready: bool) -> None:
         st.divider()
         st.subheader("System status")
 
-        if config_problems:
-            for p in config_problems:
-                st.error(p, icon=":material/error:")
-        else:
+        if groq.api_key:
             st.success("Groq API key configured", icon=":material/check_circle:")
+        else:
+            st.error("GROQ_API_KEY is not set", icon=":material/error:")
 
         if faq_ready:
             st.success("Knowledge base loaded", icon=":material/check_circle:")
@@ -77,6 +78,22 @@ def _render_sidebar(config_problems: list[str], faq_ready: bool) -> None:
                 "Knowledge base not loaded. Run `python setup.py` first.",
                 icon=":material/warning:",
             )
+
+        if app_settings.enable_tracing:
+            if app_settings.phoenix_is_local:
+                st.success(
+                    f"Phoenix tracing enabled (local: {app_settings.phoenix_endpoint})",
+                    icon=":material/check_circle:",
+                )
+            elif app_settings.phoenix_api_key:
+                st.success("Phoenix Cloud tracing enabled", icon=":material/check_circle:")
+            else:
+                st.error(
+                    "Tracing enabled but PHOENIX_API_KEY is missing",
+                    icon=":material/error:",
+                )
+        else:
+            st.caption("Tracing: disabled")
 
         st.divider()
         st.subheader("Model")
@@ -119,7 +136,10 @@ def main() -> None:
     st.title(":shield: Insurance Support Assistant")
     st.caption("Ask about policies, claims, premiums, renewals, or general coverage questions.")
 
-    if config_problems:
+    # Only the missing Groq key actually blocks chat. A missing Phoenix key
+    # just means tracing is off - the sidebar already flags it, no need to
+    # halt the whole app over an optional observability feature.
+    if not groq.api_key:
         st.error(
             "The app is not fully configured yet. Please set GROQ_API_KEY in your "
             "environment or .env file before chatting.",

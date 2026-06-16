@@ -74,12 +74,27 @@ class AppSettings:
     )
     debug_mode: bool = field(default_factory=lambda: _get_bool("DEBUG_MODE", False))
     enable_tracing: bool = field(default_factory=lambda: _get_bool("ENABLE_TRACING", False))
+    phoenix_api_key: str = field(default_factory=lambda: os.getenv("PHOENIX_API_KEY", ""))
     phoenix_endpoint: str = field(
         default_factory=lambda: os.getenv(
-            "PHOENIX_COLLECTOR_ENDPOINT", "http://127.0.0.1:6006/v1/traces"
+            "PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:6006/v1/traces"
         )
     )
-    phoenix_project: str = "insurance-support-assistant"
+    phoenix_project: str = field(
+        default_factory=lambda: os.getenv("PHOENIX_PROJECT_NAME", "insurance-support-assistant")
+    )
+
+    @property
+    def phoenix_is_local(self) -> bool:
+        """
+        True if NOT pointed at Phoenix Cloud (i.e. self-hosted, no API key
+        needed). Rather than trying to enumerate every possible local
+        hostname (localhost, 127.0.0.1, a Docker Compose service name like
+        "phoenix", a LAN IP, etc.), this checks for the one hostname that
+        specifically IS Phoenix Cloud and treats everything else as local/
+        self-hosted.
+        """
+        return "app.phoenix.arize.com" not in self.phoenix_endpoint.lower()
 
 
 groq = GroqSettings()
@@ -94,5 +109,12 @@ def validate_settings() -> list[str]:
     if not groq.api_key:
         problems.append(
             "GROQ_API_KEY is not set. Create a .env file with GROQ_API_KEY=<your key>."
+        )
+    if app.enable_tracing and not app.phoenix_api_key and not app.phoenix_is_local:
+        problems.append(
+            "ENABLE_TRACING is true but PHOENIX_API_KEY is not set. Get a Phoenix "
+            "Cloud API key from https://app.phoenix.arize.com (Settings > API Keys) "
+            "and set PHOENIX_API_KEY in your .env file, or point "
+            "PHOENIX_COLLECTOR_ENDPOINT at a local Phoenix instance instead."
         )
     return problems

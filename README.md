@@ -38,7 +38,7 @@ insurance_agent_v2/
 │   ├── logging_setup.py          # structured logging
 │   ├── llm_client.py              # ChatGroq wrapper + safe_invoke()
 │   ├── exceptions.py              # app-specific exception types
-│   ├── tracing.py                 # trace ids + node timing decorator
+│   ├── tracing.py                 # trace ids + node timing + Phoenix Cloud init
 │   └── conversation.py            # turn orchestration (Streamlit <-> graph)
 ├── graph/
 │   ├── state.py                   # GraphState TypedDict
@@ -106,11 +106,23 @@ streamlit run ui/app.py
 ## Running with Docker
 
 ```bash
+docker compose up -d phoenix      # start Phoenix tracing (optional)
 docker compose run --rm setup     # one-time DB + FAQ setup
 docker compose up -d app          # start the Streamlit app
 ```
 
-The app will be available at **http://localhost:8501**.
+The app will be available at **http://localhost:8501**, and the Phoenix
+tracing UI at **http://localhost:6006** (if started).
+
+If you want tracing, set in `.env`:
+```
+ENABLE_TRACING=true
+```
+The `app` service automatically points at `http://phoenix:6006/v1/traces`
+(the Phoenix container's name on the Docker network) regardless of what
+`PHOENIX_COLLECTOR_ENDPOINT` is set to in `.env` - that variable is only
+used when running the app outside Docker, where `phoenix` as a hostname
+wouldn't resolve. No `PHOENIX_API_KEY` is needed for this local setup.
 
 ## Configuration reference
 
@@ -125,6 +137,74 @@ variables (see `.env.example` for the full list). Key ones:
 | `GROQ_MAX_RETRIES` | `2` | SDK retry attempts before failing fast |
 | `FAQ_TOP_K` | `3` | Number of FAQ matches retrieved per query |
 | `DEBUG_MODE` | `false` | Reserved for future verbose-mode toggling |
+
+## Observability and tracing
+
+Two layers of observability are built in, and they work independently:
+
+**1. Structured logging (always on, no setup needed).** Every node logs
+its start/finish and duration via the `timed_node` decorator, and every
+log line in a given user turn shares a short trace id (e.g.
+`[trace=a1b2c3d4]`), so you can `grep` one turn's full path through the
+graph in `logs/app.log`.
+
+**2. Phoenix tracing (optional, requires setup).** Set `ENABLE_TRACING=true`
+to send real OpenTelemetry spans to Phoenix, giving you a visual trace of
+every LLM call (intent classification, greeting, FAQ, database agent)
+including prompts, completions, and latency. Works in two modes:
+
+### Local Phoenix via Docker (no API key needed)
+
+This is the default and what `docker-compose.yml` is set up for:
+
+```bash
+docker compose up -d phoenix
+```
+
+Then in `.env`:
+```
+ENABLE_TRACING=true
+```
+That's it - no `PHOENIX_API_KEY` required for local/self-hosted Phoenix.
+View traces at **http://localhost:6006**.
+
+If running the app with `docker compose up -d app`, the endpoint is
+already wired to the `phoenix` container automatically (see
+`docker-compose.yml`). If running the app outside Docker (plain
+`streamlit run ui/app.py`) while Phoenix runs in Docker, keep the default
+`PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces` in `.env` -
+Docker's port mapping (`-p 6006:6006`) makes it reachable at `localhost`
+from the host machine.
+
+### Phoenix Cloud instead
+
+1. Sign up / log in at https://app.phoenix.arize.com (a different
+   product from `app.arize.com` - keys are not interchangeable).
+2. Go to **Settings > API Keys** and create a key.
+3. Set in `.env`:
+   ```
+   ENABLE_TRACING=true
+   PHOENIX_COLLECTOR_ENDPOINT=https://app.phoenix.arize.com
+   PHOENIX_API_KEY=your_phoenix_cloud_key
+   ```
+
+### Either mode
+
+Install the optional tracing dependencies first:
+```bash
+pip install arize-phoenix-otel openinference-instrumentation-langchain
+```
+(Already included in `requirements.txt` and the Docker image.)
+
+The sidebar will show "Phoenix tracing enabled" once it's working.
+Traces appear under the `insurance-support-assistant` project
+(configurable via `PHOENIX_PROJECT_NAME`).
+
+If `ENABLE_TRACING=true` but a Cloud key is missing (and the endpoint
+isn't local), or the optional packages aren't installed, the app logs a
+warning and continues working normally - tracing is purely additive and
+never blocks the chat functionality.
+
 
 ## Notes on tool selection rules
 

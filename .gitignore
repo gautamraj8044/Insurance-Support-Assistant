@@ -1,0 +1,35 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+*.pyc
+
+# Virtual environments
+.venv
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.sln
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific - database
+*.db
+
+# Project-specific - vector store
+chroma_db/
+
+# Project-specific - logs
+logs/
+
+# Project-specific - generated data
+data/__pycache__/
